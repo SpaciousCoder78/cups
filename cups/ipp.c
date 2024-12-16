@@ -786,6 +786,14 @@ ippAddSeparator(ipp_t *ipp)		// I - IPP message
   return (ipp_add_attr(ipp, NULL, IPP_TAG_ZERO, IPP_TAG_ZERO, 0));
 }
 
+// `isValidAttribute()` - Checks for illegal characters such as parenthesis
+// Implemented to fix Issue #1118
+// Checks for numbers or - and returns true or false value
+static int isValidAttribute(char c){
+
+  //Return true or false value
+  return isalnum(c) || c == '-';
+}
 
 //
 // 'ippAddString()' - Add a language-encoded string to an IPP message.
@@ -822,6 +830,10 @@ ippAddString(ipp_t      *ipp,		// I - IPP message
   ipp_attribute_t	*attr;		// New attribute
   char			code[IPP_MAX_LANGUAGE];
 					// Charset/language code buffer
+  char filtered_value[IPP_MAX_TEXT]; //Filtered attribute value
+  int i , j //Indexes for traversing the attributes
+
+  
 
 
   DEBUG_printf("ippAddString(ipp=%p, group=%02x(%s), value_tag=%02x(%s), name=\"%s\", language=\"%s\", value=\"%s\")", (void *)ipp, group, ippTagString(group), value_tag, ippTagString(value_tag), name, language, value);
@@ -852,6 +864,17 @@ ippAddString(ipp_t      *ipp,		// I - IPP message
   else if (value && value_tag == (ipp_tag_t)(IPP_TAG_LANGUAGE | IPP_TAG_CUPS_CONST) && strcmp(value, ipp_lang_code(value, code, sizeof(code))))
     value_tag = temp_tag;		// Don't do a fast copy
 
+  // Filtering the input values 
+  for(i=0,j=0;value[i]!='\0' && j < IPP_MAX_TEXT-1;i++){
+    //Using isValidAttribute function to check for illegal characters
+    if(isValidAttribute(value[i])){
+      filtered_value[j++]=value[i];
+    }
+  }
+  filtered_value[j]='\0';
+
+  //Replaced value with filtered_value
+
   // Create the attribute...
   if ((attr = ipp_add_attr(ipp, name, group, value_tag, 1)) == NULL)
     return (NULL);
@@ -860,21 +883,21 @@ ippAddString(ipp_t      *ipp,		// I - IPP message
   if ((int)value_tag & IPP_TAG_CUPS_CONST)
   {
     attr->values[0].string.language = (char *)language;
-    attr->values[0].string.text     = (char *)value;
+    attr->values[0].string.text     = (char *)filtered_value;
   }
   else
   {
     if (language)
       attr->values[0].string.language = _cupsStrAlloc(ipp_lang_code(language, code, sizeof(code)));
 
-    if (value)
+    if (filtered_value)
     {
       if (value_tag == IPP_TAG_CHARSET)
-	attr->values[0].string.text = _cupsStrAlloc(ipp_get_code(value, code, sizeof(code)));
+	attr->values[0].string.text = _cupsStrAlloc(ipp_get_code(filtered_value, code, sizeof(code)));
       else if (value_tag == IPP_TAG_LANGUAGE)
-	attr->values[0].string.text = _cupsStrAlloc(ipp_lang_code(value, code, sizeof(code)));
+	attr->values[0].string.text = _cupsStrAlloc(ipp_lang_code(filtered_value, code, sizeof(code)));
       else
-	attr->values[0].string.text = _cupsStrAlloc(value);
+	attr->values[0].string.text = _cupsStrAlloc(filtered_value);
     }
   }
 
