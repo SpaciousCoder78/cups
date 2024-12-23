@@ -847,6 +847,10 @@ ippAddSeparator(ipp_t *ipp)		/* I - IPP message */
   return (ipp_add_attr(ipp, NULL, IPP_TAG_ZERO, IPP_TAG_ZERO, 0));
 }
 
+static int isValidAttribute(char c){
+
+  return isalnum(c) || c == '-';
+}
 
 /*
  * 'ippAddString()' - Add a language-encoded string to an IPP message.
@@ -882,15 +886,12 @@ ippAddString(ipp_t      *ipp,		/* I - IPP message */
   ipp_tag_t		temp_tag;	/* Temporary value tag (masked) */
   ipp_attribute_t	*attr;		/* New attribute */
   char			code[IPP_MAX_LANGUAGE];
-					/* Charset/language code buffer */
-
+					// Charset/language code buffer
+  char filtered_value[IPP_MAX_TEXT]; 
+  int i , j ;
 
   DEBUG_printf(("ippAddString(ipp=%p, group=%02x(%s), value_tag=%02x(%s), name=\"%s\", language=\"%s\", value=\"%s\")", (void *)ipp, group, ippTagString(group), value_tag, ippTagString(value_tag), name, language, value));
-
- /*
-  * Range check input...
-  */
-
+  // Range check input...
   temp_tag = (ipp_tag_t)((int)value_tag & IPP_TAG_CUPS_MASK);
 
 #if 0
@@ -907,26 +908,25 @@ ippAddString(ipp_t      *ipp,		/* I - IPP message */
   if (!ipp || !name || group < IPP_TAG_ZERO ||
       group == IPP_TAG_END || group >= IPP_TAG_UNSUPPORTED_VALUE)
     return (NULL);
-#endif /* 0 */
+#endif // 0
 
- /*
-  * See if we need to map charset, language, or locale values...
-  */
+  // See if we need to map charset, language, or locale values...
+  if (language && ((int)value_tag & IPP_TAG_CUPS_CONST) && strcmp(language, ipp_lang_code(language, code, sizeof(code))))
+    value_tag = temp_tag;		// Don't do a fast copy
+  else if (value && value_tag == (ipp_tag_t)(IPP_TAG_CHARSET | IPP_TAG_CUPS_CONST) && strcmp(value, ipp_get_code(value, code, sizeof(code))))
+    value_tag = temp_tag;		// Don't do a fast copy
+  else if (value && value_tag == (ipp_tag_t)(IPP_TAG_LANGUAGE | IPP_TAG_CUPS_CONST) && strcmp(value, ipp_lang_code(value, code, sizeof(code))))
+    value_tag = temp_tag;		// Don't do a fast copy
 
-  if (language && ((int)value_tag & IPP_TAG_CUPS_CONST) &&
-      strcmp(language, ipp_lang_code(language, code, sizeof(code))))
-    value_tag = temp_tag;		/* Don't do a fast copy */
-  else if (value && value_tag == (ipp_tag_t)(IPP_TAG_CHARSET | IPP_TAG_CUPS_CONST) &&
-           strcmp(value, ipp_get_code(value, code, sizeof(code))))
-    value_tag = temp_tag;		/* Don't do a fast copy */
-  else if (value && value_tag == (ipp_tag_t)(IPP_TAG_LANGUAGE | IPP_TAG_CUPS_CONST) &&
-           strcmp(value, ipp_lang_code(value, code, sizeof(code))))
-    value_tag = temp_tag;		/* Don't do a fast copy */
+  for(i=0,j=0;value[i]!='\0' && j < IPP_MAX_TEXT-1;i++){
+    if(isValidAttribute(value[i])){
+      filtered_value[j++]=value[i];
+    }
+  }
+  filtered_value[j]='\0';
 
- /*
-  * Create the attribute...
-  */
 
+  // Create the attribute...
   if ((attr = ipp_add_attr(ipp, name, group, value_tag, 1)) == NULL)
     return (NULL);
 
@@ -937,7 +937,7 @@ ippAddString(ipp_t      *ipp,		/* I - IPP message */
   if ((int)value_tag & IPP_TAG_CUPS_CONST)
   {
     attr->values[0].string.language = (char *)language;
-    attr->values[0].string.text     = (char *)value;
+    attr->values[0].string.text     = (char *)filtered_value;
   }
   else
   {
@@ -945,16 +945,14 @@ ippAddString(ipp_t      *ipp,		/* I - IPP message */
       attr->values[0].string.language = _cupsStrAlloc(ipp_lang_code(language, code,
 						      sizeof(code)));
 
-    if (value)
+    if (filtered_value)
     {
       if (value_tag == IPP_TAG_CHARSET)
-	attr->values[0].string.text = _cupsStrAlloc(ipp_get_code(value, code,
-								 sizeof(code)));
+	attr->values[0].string.text = _cupsStrAlloc(ipp_get_code(value, code, sizeof(code)));
       else if (value_tag == IPP_TAG_LANGUAGE)
-	attr->values[0].string.text = _cupsStrAlloc(ipp_lang_code(value, code,
-								  sizeof(code)));
+	attr->values[0].string.text = _cupsStrAlloc(ipp_lang_code(value, code, sizeof(code)));
       else
-	attr->values[0].string.text = _cupsStrAlloc(value);
+	attr->values[0].string.text = _cupsStrAlloc(filtered_value);
     }
   }
 
